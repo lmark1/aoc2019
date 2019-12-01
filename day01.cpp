@@ -32,20 +32,14 @@ int part2(std::ifstream& inputFile)
 {
     std::string numberStr;
     int totalFuel =  0;
-    std::cout << std::endl;
     while (getline(inputFile, numberStr))
     {
         int number = std::stoi(numberStr);
-
-        std::cout << number << ", " << totalFuel << "\t";
         while (number > 0)
         {
             number = std::max(floor(number/3.0) - 2, 0.0);
-            // number = floor(number/3.0) - 2;
             totalFuel += number;
-            std::cout << number << ", " << totalFuel << "\t";
         }
-        std::cout << std::endl;
     }
     return totalFuel;
 }
