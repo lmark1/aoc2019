@@ -47,7 +47,7 @@ int part2 (std::string prev, std::string curr, myMap& map)
     auto it = find_if(map.begin(), map.end(), check_value);
     while (it != map.end())
     {
-        if (it->first.compare(prev) == 0)
+        if (it->first.compare(prev) == 0) // Don't go back, Jack
         {
             it = find_if(std::next(it), map.end(), check_value);
             continue;

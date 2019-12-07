@@ -174,8 +174,7 @@ int calcMax(std::vector<Amplifier>& amps)
     int max = 0;
     std::array<int, 5> perm = {0, 1, 2, 3, 4};
     do {
-        max = std::max(max, part1(std::vector<int> {
-                perm[0], perm[1], perm[2], perm[3], perm[4]}, amps));
+        max = std::max(max, part1(std::vector<int> {perm[0], perm[1], perm[2], perm[3], perm[4]}, amps));
         for (auto& amp : amps)
             amp.reset();
     } while (std::next_permutation(perm.begin(), perm.end()));
@@ -187,8 +186,7 @@ int calcMaxFeedBack(std::vector<Amplifier>& amps)
     std::array<int, 5> perm = {5, 6, 7, 8, 9};
     int max = 0;
     do {
-        max = std::max(max, part2(std::vector<int> {
-                perm[0], perm[1], perm[2], perm[3], perm[4]}, amps));
+        max = std::max(max, part2(std::vector<int> {perm[0], perm[1], perm[2], perm[3], perm[4]}, amps));
         for (auto& amp : amps)
             amp.reset();
     } while (std::next_permutation(perm.begin(), perm.end()));
