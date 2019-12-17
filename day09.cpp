@@ -106,7 +106,12 @@ private:
         bool outputSet = false;
         //std::printf ("Amp input %d, Amp phase %d\n", ampInput, ampPhase);
         while (_instructionPointer < _intCode.size())
-        {
+        {   
+            std::cout << "(";
+            for (auto in : _intCode)
+                std::cout << in << ", ";
+            std::cout << ")" << std::endl;
+
             int paramMode3 = _intCode[_instructionPointer] / 10000,
                 paramMode2 = (_intCode[_instructionPointer] % 10000) / 1000,
                 paramMode1 = (_intCode[_instructionPointer] % 1000 ) / 100,
