@@ -10,9 +10,9 @@
 struct OreCompund
 {
     std::string oreType;
-    int oreAmount;
+    long long oreAmount;
 
-    OreCompund(std::string _oreType, int _oreAmount):
+    OreCompund(std::string _oreType, long long _oreAmount):
         oreType(_oreType), oreAmount(_oreAmount) 
     {}
 
@@ -41,23 +41,27 @@ typedef std::map<
 
 typedef std::unordered_map<
     std::string             /* result */,
-    int                     /* amount */>   quantityMap_t;
+    long long               /* amount */>   quantityMap_t;
 
-bool isBaseReaction(reactionMap_t::iterator& it, reactionMap_t& chemicalReactionMap)
+reactionMap_t chemicalReactionMap;
+const long long MAX_ORE = 1e12;
+const std::string FUEL_L("FUEL");
+
+bool isBaseReaction(reactionMap_t::iterator& it)
 {
     return it != chemicalReactionMap.end() &&
         it->second.size() == 1 &&
         it->second[0].oreType == "ORE";
 }
 
-void calculateQuantities(std::string rootChemical, int rootAmount, reactionMap_t& chemicalReactionMap, 
-    quantityMap_t& resultQuantityMap, quantityMap_t& leftoverQMap, bool overrideMul = false)
+void calculateQuantities(std::string rootChemical, long long rootAmount, 
+    quantityMap_t& resultQuantityMap, quantityMap_t& leftoverQMap)
 {
     auto reactionIt = chemicalReactionMap.find(OreCompund(rootChemical, -1));
-    int multiplier = std::ceil(1.0 * rootAmount / reactionIt->first.oreAmount);
+    long long multiplier = std::ceil(1.0 * rootAmount / reactionIt->first.oreAmount);
 
     // If there is no reaction, assume chamical == ORE
-    if (isBaseReaction(reactionIt, chemicalReactionMap))    
+    if (isBaseReaction(reactionIt))    
     {
         auto quantityIt = resultQuantityMap.emplace(rootChemical, rootAmount);
         if (!quantityIt.second) resultQuantityMap[rootChemical] += rootAmount;
@@ -66,7 +70,7 @@ void calculateQuantities(std::string rootChemical, int rootAmount, reactionMap_t
 
     for (auto& reagent : reactionIt->second)
     {
-        int consumeAmount = multiplier * reagent.oreAmount;
+        long long consumeAmount = multiplier * reagent.oreAmount;
 
         auto leftoverIt = leftoverQMap.find(reagent.oreType);
         if (leftoverIt != leftoverQMap.end())
@@ -86,51 +90,78 @@ void calculateQuantities(std::string rootChemical, int rootAmount, reactionMap_t
         if (consumeAmount == 0)
             continue;
 
-        //std::printf("Consume %d %s.\n", consumeAmount, reagent.oreType.c_str());
-        calculateQuantities(reagent.oreType, consumeAmount, chemicalReactionMap, resultQuantityMap, leftoverQMap);
-
+        //std::printf("Consume %ld %s.\n", consumeAmount, reagent.oreType.c_str());
+        calculateQuantities(reagent.oreType, consumeAmount, resultQuantityMap, leftoverQMap);
         auto reagentIt = chemicalReactionMap.find(reagent);
-        if (!isBaseReaction(reagentIt, chemicalReactionMap))
+        if (!isBaseReaction(reagentIt))
         {
             // Add amount to leftovers
-            int actualAmount = std::ceil(1.0 * consumeAmount / reagentIt->first.oreAmount) * reagentIt->first.oreAmount;
-            int leftoverAmount = actualAmount - consumeAmount;
+            long long actualAmount = std::ceil(1.0 * consumeAmount / reagentIt->first.oreAmount) * reagentIt->first.oreAmount;
+            long long leftoverAmount = actualAmount - consumeAmount;
             auto empSuccess = leftoverQMap.emplace(reagent.oreType, leftoverAmount);
             if (!empSuccess.second) leftoverQMap[reagent.oreType] += leftoverAmount;
         }
     }
 }
 
-int getOreAmount(std::string root, int q, reactionMap_t& chemicalReactionMap)
+long long getOreAmount(std::string root, long long q)
 {
     quantityMap_t 
         resultQuantityMap,      // How many checmical that can be transferred to ORE are needed for reaction ?
         leftoverQMap;           // How many leftover quantities are made.
 
-    calculateQuantities(root, q, chemicalReactionMap, resultQuantityMap, leftoverQMap);
-    int totalOre = 0;
+    calculateQuantities(root, q, resultQuantityMap, leftoverQMap);
+    long long totalOre = 0;
     for (auto& chemicalPair : resultQuantityMap)
     {
         auto reactionIt = chemicalReactionMap.find(OreCompund(chemicalPair.first, -1));
-        int oreAmount = 
+        long long oreAmount = 
             std::ceil(1.0 * chemicalPair.second / reactionIt->first.oreAmount) * 
             reactionIt->second[0].oreAmount;
-        std::printf("CONSUME %d ORE to produce %d %s\n", oreAmount, 
-            chemicalPair.second, chemicalPair.first.c_str());
+        //std::printf("CONSUME %ld ORE to produce %ld %s\n", oreAmount, 
+        //    chemicalPair.second, chemicalPair.first.c_str());
         totalOre += oreAmount;
     }  
     return totalOre;
+}
+
+long long getMaxFuel()
+{
+    // Initial bounds are not the solution
+    long long lowerBoundFuel = 1;
+
+    // Calculate the upper bound
+    long long upperBoundFuel = 1;
+    long long tempOre = 1;
+    while (tempOre <= MAX_ORE)
+    {
+        upperBoundFuel *= 10;
+        tempOre = getOreAmount(FUEL_L, upperBoundFuel);
+    }
+
+    while (upperBoundFuel >= lowerBoundFuel)
+    {
+        long long medFuel = (upperBoundFuel + lowerBoundFuel) / 2;
+        long long medOre = getOreAmount(FUEL_L, medFuel);
+        if (medFuel == upperBoundFuel || medFuel == lowerBoundFuel)
+            break;
+        if (medOre >= MAX_ORE)
+            upperBoundFuel = medFuel;
+        else
+            lowerBoundFuel = medFuel;
+    } 
+    return lowerBoundFuel;
 }
 
 int main  ()
 {
     std::fstream inputFile("day14.txt");
     std::string line, token;
-    reactionMap_t chemicalReactionMap;
     while(getline(inputFile, line))
     {
         std::vector<std::string> tokens;
-        boost::split(tokens, line, boost::is_any_of("[=>], "), boost::algorithm::token_compress_on);
+        boost::split(tokens, line, boost::is_any_of("[=>], "), 
+            boost::algorithm::token_compress_on);
         
         OreCompund reactionResult (
             tokens[tokens.size()-1], 
@@ -143,7 +174,7 @@ int main  ()
             );
         chemicalReactionMap.emplace(reactionResult, reactionInput);
     }  
-    int oreNeeded = getOreAmount("FUEL", 1, chemicalReactionMap);
-    std::cout << "Total ORE needed: " << oreNeeded << std::endl;
+    std::cout << "Total ORE needed: " << getOreAmount(FUEL_L, 1) << std::endl;
+    std::cout << "Fuel for ORE 1e12 needed: " << getMaxFuel() << std::endl;
     return 0;
 }
