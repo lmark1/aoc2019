@@ -44,7 +44,7 @@ std::unordered_map<int, char> tileMap =
     {
       { TileValues::WALL, '#' },
       { TileValues::FREE, '.' },
-      { TileValues::OXY,  'o' } 
+      { TileValues::OXY,  'O' } 
     };
 
 enum Direction
@@ -117,12 +117,13 @@ void updateMatrixMap(const std::pair<int, int>& pos, int tileValue)
     matrixMap[mapCoordY][mapCoordX] = tileMap[tileValue];
 }
 
-void printMatrixMap(const std::pair<int, int>& pos)
+void printMatrixMap(const std::pair<int, int>& pos, bool enableDroid = true)
 {
     std::cout << clear;
     int mapCoordY = abs(startY) + pos.second;
     int mapCoordX = abs(startX) + pos.first;
-    matrixMap[mapCoordY][mapCoordX] = 'D';
+    int temp = matrixMap[mapCoordY][mapCoordX];
+    if (enableDroid) matrixMap[mapCoordY][mapCoordX] = 'D';
     for (auto& line : matrixMap)
     {
         for (auto& el : line)
@@ -130,8 +131,8 @@ void printMatrixMap(const std::pair<int, int>& pos)
         std::cout << std::endl;
     }
     std::cout << std::endl;
-    matrixMap[mapCoordY][mapCoordX] = '.';
-    usleep(2500);
+    matrixMap[mapCoordY][mapCoordX] = temp;
+    usleep(5000);
 }
 
 int getNewMovement(const std::pair<int, int>& pos, const int& prevMovement)
@@ -144,37 +145,51 @@ int getNewMovement(const std::pair<int, int>& pos, const int& prevMovement)
     }
 
     // If all are discovered return same movement direction if that direction is free
-    if (gridMap.find(movePosition(pos, prevMovement))->second != TileValues::WALL) return prevMovement;
+    // if (gridMap.find(movePosition(pos, prevMovement))->second != TileValues::WALL) return prevMovement;
 
     // Return any free direction as long as its not opposite to previous
+    std::vector<int> dirs;
     for (int movementDir = Direction::NORTH; movementDir <= 4; movementDir++)
     {
         auto newPos = movePosition(pos, movementDir);
         auto it = gridMap.find(newPos);
         if (it->second != TileValues::WALL &&
             getOppositeDirection(prevMovement) != movementDir) 
-                return movementDir;
+                dirs.push_back(movementDir);
     }
+    if (!dirs.empty()) return dirs[rand() % dirs.size()];
+
 
     // Return any other movement direction that contains a free block
+    dirs.clear();
     for (int movementDir = Direction::NORTH; movementDir <= 4; movementDir++)
     {
         auto newPos = movePosition(pos, movementDir);
         auto it = gridMap.find(newPos);
-        if (it->second != TileValues::WALL) return movementDir;
+        if (it->second != TileValues::WALL) dirs.push_back(movementDir);
     }
+    return dirs[rand() % dirs.size()];    
 }
 
 const std::pair<int, int> getOxygenPosition()
 {
-    std::pair<int, int> currentPosition {0, 0};
+    std::pair<int, int> currentPosition {0, 0},
+        oxyPosition {0, 0};
     gridMap.emplace(currentPosition, TileValues::FREE);
     matrixMap.push_back( std::vector<char> {tileMap[TileValues::FREE]} );
 
-    int movementDir = Direction::NORTH;
+    int movementDir = Direction::EAST;
     char currentTileValue = TileValues::FREE;
-    while (currentTileValue != TileValues::OXY)
+    int movesUntilNewArea = 0;
+    bool foundOxy = false;
+    while (movesUntilNewArea < 500 || !foundOxy) // currentTileValue != TileValues::OXY)
     {  
+        if (currentTileValue == TileValues::OXY)
+        {
+            foundOxy = true;
+            oxyPosition = currentPosition;
+        }
+
         //std::printf("Dir: %d [%d, %d] -> %d\n", movementDir, currentPosition.first, currentPosition.second, currentTileValue);
         int newTileValue = ic.calculateSingle(movementDir);
         if (ic.isHalted()) break;
@@ -183,6 +198,11 @@ const std::pair<int, int> getOxygenPosition()
 
         // Insert new grid position
         auto success = gridMap.emplace(newPos, newTileValue);
+        // If insertion is not successful, this means we have already seen this area
+        if (!success.second)
+            movesUntilNewArea++;
+        else
+            movesUntilNewArea = 0;
         
         //std::printf("Found: [%d, %d] -> %d\n", newPos.first, newPos.second, newTileValue);
         printMatrixMap(currentPosition);
@@ -194,19 +214,25 @@ const std::pair<int, int> getOxygenPosition()
         // Movement was successful
         if (newTileValue != TileValues::WALL)
         {
+            // Single link
             auto success = connectivityMap.emplace(
                 currentPosition, std::unordered_set<std::pair<int, int>, hash_pair> {newPos});
             if (!success.second)
                 connectivityMap[currentPosition].emplace(newPos);
 
+            // Double link
+            success = connectivityMap.emplace(
+                newPos, std::unordered_set< std::pair<int, int>, hash_pair> {currentPosition});
+            if (!success.second)
+                connectivityMap[newPos].emplace(currentPosition);
+
             currentPosition = newPos;
             currentTileValue = newTileValue;
         }
-        // Movement is unsucessful - change direction
-        else
-            movementDir = getNewMovement(currentPosition, movementDir);
+        
+        movementDir = getNewMovement(currentPosition, movementDir);
     }
-    return currentPosition;
+    return oxyPosition;
 }
 
 int shortestPath(std::pair<int, int> currentPosition, std::pair<int, int> previousPosition)
@@ -234,8 +260,39 @@ int shortestPath(std::pair<int, int> currentPosition, std::pair<int, int> previo
             minPath, 
             1 + shortestPath(candidate, currentPosition));
     }
-
     return minPath;
+}
+
+int part2(const std::pair<int, int> oxyPosition)
+{
+    std::vector< std::pair<int, int> > oxyRooms;
+    oxyRooms.push_back(oxyPosition);
+
+    int elapsedMin = 0;
+    while (oxyRooms.size() != 0)
+    {
+        std::vector< std::pair<int, int> > updatedRooms;
+
+        // Go though all available connected oxy rooms
+        for (auto& oxyRoom : oxyRooms)
+        for (auto& connectedRoom : connectivityMap[oxyRoom])
+        {
+            if (gridMap[connectedRoom] != TileValues::FREE)
+                continue;
+            
+            // Update grid
+            gridMap[connectedRoom] = TileValues::OXY;
+            updateMatrixMap(connectedRoom, TileValues::OXY);
+            updatedRooms.push_back(connectedRoom);
+        }
+        
+        if (updatedRooms.size() == 0) break;
+        elapsedMin++;
+        printMatrixMap(std::make_pair(0, 0), false);
+        std::cout << "Elapsed: " << elapsedMin << std::endl;
+        oxyRooms = std::move(updatedRooms);
+    }
+    return elapsedMin;    
 }
 
 int main ()
@@ -243,5 +300,9 @@ int main ()
     ic.setVerbosity(false);
     auto oxyPosition = getOxygenPosition();
     int minPath = shortestPath(std::make_pair(0, 0), std::make_pair(-1, -1));
+    printMatrixMap(std::make_pair(0, 0), true);
     std::cout << "Shortest path: " << minPath << std::endl;
+
+    int oxyTime = part2(oxyPosition);
+    std::cout << "Oxygen time: " << oxyTime << std::endl;
 }     
