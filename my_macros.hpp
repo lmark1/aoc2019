@@ -4,3 +4,4 @@
                         std::cout << i; \
                      std::cout << std::endl;
 #define LOG_PAIR(pair) std::cout << " (" << pair.first << ", " << pair.second << ") ";
+#define LOG_COND(expr, x) if (expr) LOG(x);
