@@ -151,7 +151,7 @@ private:
             {   
                 if (takeUserInput)
                 {
-                    LOG("Please input number: ");
+                    LOG_COND(_verbose, "Please input number: ");
                     std::cin >> input;
                 }
 
