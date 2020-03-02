@@ -28,13 +28,26 @@ static std::unordered_map<char, int> find_nearest_keys(
   find_nearest_keys_internal(
     t_maze,
     t_startPosition,
-    std::make_pair(-1, -1),
+    t_startPosition,
     0,
     keyDistanceMap,
     exploredPath
   );
   return keyDistanceMap;
 }
+
+static std::vector<std::size_t> find_all_key_indices(const std::string& t_row)
+{
+  std::vector<std::size_t> result;
+  for (int i = 0; i < t_row.size(); i++) {
+    const auto currChar = t_row.at(i);
+    if (currChar == '@' || is_key_tile(currChar)) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
 
 private:
 static inline bool is_wall_tile(char t_tile)
@@ -143,16 +156,23 @@ int main()
   std::fstream inputFile("day18.txt");
   std::vector<std::string> maze;
   std::string line;
-  std::pair<int, int> startPosition;
-  int i = 0;
+  std::unordered_map<char, std::unordered_map<char, int>>  connectivityMap;
   while (getline(inputFile, line)) {
-    const auto pos = line.find_first_of('@');
-    if (pos != std::string::npos) {
-      startPosition = std::make_pair(i, pos);
-      std::cout << "Start @ [" << i << ", " << pos << "]\n";
-    }
     maze.push_back(line);
+  }
+  
+  int i = 0;
+  for (const auto& line : maze) {
+    const auto keyIndices = KeyFinder::find_all_key_indices(line);
+    for (const auto& key : keyIndices) {
+      const auto distanceMap = KeyFinder::find_nearest_keys(maze, std::make_pair(i, key));
+      std::cout <<  "For [" << line.at(key) << "]\n";
+      for (const auto& item : distanceMap) {
+        std::cout << "{" << item.first << " : " << item.second << "}" << " ";
+      }
+      std::cout << "\n";
+      connectivityMap.emplace(line.at(key), distanceMap);
+    }
     i++;
   }
-  const auto distanceMap = KeyFinder::find_nearest_keys(maze, startPosition);
 }
