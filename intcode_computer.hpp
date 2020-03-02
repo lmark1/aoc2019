@@ -35,7 +35,7 @@ enum ParameterMode
 
 public:
 
-    IntcodeComputer(std::fstream&& intCodeFileStream) :
+    explicit IntcodeComputer(std::fstream&& intCodeFileStream) :
         IntcodeComputer([&intCodeFileStream]() 
         {
             std::vector<long long> intCode;
@@ -47,7 +47,7 @@ public:
         }())
     { }
 
-    IntcodeComputer(std::vector<long long> intCode)
+    explicit IntcodeComputer(std::vector<long long> intCode)
         :_intCode(intCode), _intCodeOrig(intCode) 
     {
         _operationsMap.emplace(ADD, [](long long a, long long b) { return a+b; } );
@@ -97,15 +97,17 @@ private:
 
     void setMemoryVal(long long index, long long value)
     {
-        while (index > _intCode.size() - 1)
-            _intCode.push_back(0);    
-        _intCode[index] = value; 
+        while (index > _intCode.size() - 1) {
+            _intCode.push_back(0);
+        }
+        _intCode[index] = value;
     }
 
     long long getMemoryVal(long long index)
     {
-        while (index > _intCode.size() - 1)
-            _intCode.push_back(0);    
+        while (index > _intCode.size() - 1) {
+            _intCode.push_back(0);
+        }
         return _intCode[index];
     }
 
@@ -165,8 +167,9 @@ private:
                 LOG_COND(_verbose, "DIAGNOSTICS output: " << output << std::endl);
                 _instructionPointer += 2;
                 outputSet = true;
-                if (returnOnOutput)
+                if (returnOnOutput) {
                     break;
+                }
             }
             else if (opCode == BASE_OP)
             {
@@ -178,11 +181,13 @@ private:
                 int firstArg = getMemoryVal( getArgIndex(paramMode1, _instructionPointer + 1) );
                 int secondArg = getMemoryVal( getArgIndex(paramMode2, _instructionPointer + 2) );
                 
-                if (opCode == JUMP_IF_TRUE && firstArg != 0 ||
-                    opCode == JUMP_IF_FALSE && firstArg == 0)
+                if ( (opCode == JUMP_IF_TRUE && firstArg != 0) ||
+                     (opCode == JUMP_IF_FALSE && firstArg == 0)) {
                     _instructionPointer = secondArg;
-                else
+                }
+                else {
                     _instructionPointer += 3;
+                }
             }
             else
             {
@@ -200,8 +205,9 @@ private:
             }
         }
 
-        if (outputSet)
+        if (outputSet) {
             _lastOutput = output;
+        }
         return output;
     }
 
