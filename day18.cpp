@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <map>
 #include <algorithm>
+#include <chrono>
 
 typedef std::pair<int, int> Position;
 typedef std::unordered_map<char, int> DistanceMap;
@@ -36,7 +37,7 @@ static DistanceMap find_nearest_keys(
   std::unordered_set<Position, hash_pair> exploredPath;
   const auto originalChar = t_maze[t_startPosition.first][t_startPosition.second];
   // std::cout << "Finding nearest objects for [" << originalChar << "] at " << t_startPosition << "\n"; 
-  t_maze[t_startPosition.first][t_startPosition.second] = '.';
+  t_maze[t_startPosition.first][t_startPosition.second] = FREE_TILE;
   find_nearest_keys_internal(
     t_maze,
     t_startPosition,
@@ -54,15 +55,162 @@ static std::vector<std::size_t> find_all_key_indices(const std::string& t_row)
   std::vector<std::size_t> result;
   for (int i = 0; i < t_row.size(); i++) {
     const auto currChar = t_row.at(i);
-    if (currChar == '@' || is_key_tile(currChar)) {
+    if (currChar == ME_TILE || is_key_tile(currChar)) {
       result.push_back(i);
     }
   }
   return result;
 }
 
+static std::unordered_map<char, DistanceMap> build_connectivity_map(
+  std::vector<std::string>& t_maze, bool t_verbose = false)
+{
+  std::unordered_map<char, DistanceMap>  connectivityMap;
+  for (int i = 0; i < t_maze.size(); i++) {
+    const auto line = t_maze.at(i);
+    const auto keyIndices = KeyFinder::find_all_key_indices(line);
+    for (const auto& key : keyIndices) {
+      const auto distanceMap = KeyFinder::find_nearest_keys(t_maze, std::make_pair(i, key));
+      connectivityMap.emplace(line.at(key), distanceMap);
+
+      if (t_verbose) {
+        std::cout <<  "[main] Tile [" << line.at(key) << "] ";
+        for (const auto& item : distanceMap) {
+          std::cout << "{" << item.first << " : " << item.second << "}" << " ";
+        }
+        std::cout << "\n";
+      }
+    }
+  }
+  return connectivityMap;
+}
+
+static void check_connectivity_map(const std::unordered_map<char, DistanceMap>& t_connectivityMap)
+{
+  int errorCount = 0;
+  for (const auto& connItem : t_connectivityMap) {
+    const auto originTile = connItem.first;
+    for (const auto& distanceItem : connItem.second) {
+      const auto tile = distanceItem.first;
+      const auto distance = distanceItem.second;
+
+      const auto checkerDistance = t_connectivityMap.at(tile).at(originTile);
+      if (distance != checkerDistance) {
+        std::cout << originTile << " - " << tile << " distance " << distance << "\n";
+        std::cout << tile << " - " << originTile << " distance " << checkerDistance << "\n\n";
+        errorCount++;
+      }
+    }
+  }
+  std::cout << "Error count = " << errorCount << "\n";
+}
+
+static std::unordered_map<char, Position> get_position_map(
+  std::vector<std::string>& t_maze)
+{
+  std::unordered_map<char, Position> positionMap;
+  for (int i = 0; i < t_maze.size(); i++) {
+    const auto line = t_maze.at(i);
+    const auto keyIndices = KeyFinder::find_all_key_indices(line);
+    for (const auto& index : keyIndices) {
+      positionMap.emplace(line.at(index), std::make_pair(i, index));
+    }
+  }
+  return positionMap;
+}
+
+static int minimize(std::vector<std::string>& o_maze)
+{
+  const auto positionMap = get_position_map(o_maze);
+  std::unordered_set<char> collectedKeys;
+  return minimize_internal(ME_TILE, positionMap, o_maze, collectedKeys, false);
+}
 
 private:
+
+static int minimize_internal(
+  const char t_currentChar,
+  const std::unordered_map<char, Position>& t_positionMap,
+  std::vector<std::string>& o_maze,
+  std::unordered_set<char>& o_collectedKeys,
+  bool t_verbose = false)
+{
+  // 0.5) Invalidate the current tile
+  const auto currentPosition = t_positionMap.at(t_currentChar);
+
+  // 1) Obtain the distance map from the current tile
+  const auto distanceMap = find_nearest_keys(o_maze, currentPosition);
+  
+  if (t_verbose) {
+    std::cout <<  "[minimize] Tile [" << t_currentChar << "] ";
+    for (const auto& item : distanceMap) {
+      std::cout << "{" << item.first << " : " << item.second << "}" << " ";
+    }
+    std::cout << "\n";
+  }
+
+  // 2) Find all the available keys
+  if (t_verbose) { std::cout << "[minimize] Valid tiles are: "; }
+  std::unordered_set<char> validTiles;
+  for (const auto& distanceItem : distanceMap) {
+    const auto tile = distanceItem.first;
+    
+    if (is_tile_key(tile)
+      || is_door_unlocked(tile, o_collectedKeys)) {
+      validTiles.emplace(tile);
+      if (t_verbose) { std::cout << tile << ", "; }
+    }
+  }
+  if (t_verbose) { std::cout << "\n"; }
+
+  if (validTiles.empty()) {
+    return 0;
+  }
+
+  // 3) Recursion through all the available keys
+  int minPathCost = 1e4;
+  for (const auto& tileCandidate : validTiles) {
+
+    const auto originalTile = o_maze[currentPosition.first][currentPosition.second];
+    o_maze[currentPosition.first][currentPosition.second] = FREE_TILE;
+    if (is_tile_key(tileCandidate)) {
+      o_collectedKeys.emplace(tileCandidate);
+    }
+
+    if (t_verbose) {std::cout << "[minimize] Moving from " << t_currentChar << " to " << tileCandidate << "\n\n";}
+    const auto pathCost =
+      distanceMap.at(tileCandidate)
+      + minimize_internal(
+        tileCandidate,
+        t_positionMap,
+        o_maze,
+        o_collectedKeys,
+        t_verbose
+      );
+
+    // std::cout << "Path cost: " << pathCost << "\n";
+    if (pathCost < minPathCost) {
+      minPathCost = pathCost;
+    }
+
+    o_collectedKeys.erase(tileCandidate);
+    o_maze[currentPosition.first][currentPosition.second] = originalTile;    
+  }
+
+  // std::cout << "Returning " << minPathCost << "\n";
+  return minPathCost;
+}
+
+static inline bool is_tile_key(const char tile)
+{
+  return islower(tile) != 0;
+}
+
+static inline bool is_door_unlocked(const char tile, const std::unordered_set<char>& collectedKeys)
+{
+  return collectedKeys.find(tolower(tile)) != collectedKeys.end();
+}
+
 static inline bool is_wall_tile(char t_tile)
 {
   return t_tile == WALL_TILE;
@@ -124,17 +272,8 @@ static void find_nearest_keys_internal(
     //   << "] at " << t_currentPosition
     //   << " - distance " << o_keyDistanceMap[key]
     //   << " - found distance " << o_numberOfSteps << "\n";
-    
-    // Reset the explored path if new best distacne is found
-    // if (o_keyDistanceMap[key] == o_numberOfSteps) {
-    //   o_exploredPath.clear();
-    // }
     return;
   }
-
-  // if (o_numberOfSteps > t_maze.size() * t_maze.front().size()) {
-  //   return;
-  // }
 
   const auto adjacent_tiles = get_adjacent_tiles(t_maze, t_currentPosition);
   const auto explore_if_available = [&] 
@@ -176,41 +315,17 @@ int main()
   std::fstream inputFile("day18.txt");
   std::vector<std::string> maze;
   std::string line;
-  std::unordered_map<char, DistanceMap>  connectivityMap;
   while (getline(inputFile, line)) {
     maze.push_back(line);
   }
-  
-  // Build the connectivity map
-  for (int i = 0; i < maze.size(); i++) {
-    const auto line = maze.at(i);
-    const auto keyIndices = KeyFinder::find_all_key_indices(line);
-    for (const auto& key : keyIndices) {
-      const auto distanceMap = KeyFinder::find_nearest_keys(maze, std::make_pair(i, key));
-      // std::cout <<  "[main] Tile [" << line.at(key) << "] ";
-      // for (const auto& item : distanceMap) {
-      //   std::cout << "{" << item.first << " : " << item.second << "}" << " ";
-      // }
-      // std::cout << "\n\n";
-      connectivityMap.emplace(line.at(key), distanceMap);
-    }
-  }
 
-  // Check the connectivity map
-  int errorCount = 0;
-  for (const auto& connItem : connectivityMap) {
-    const auto originTile = connItem.first;
-    for (const auto& distanceItem : connItem.second) {
-      const auto tile = distanceItem.first;
-      const auto distance = distanceItem.second;
+  auto start = std::chrono::steady_clock::now();
+  auto connectivityMap = KeyFinder::build_connectivity_map(maze, true);
+  KeyFinder::check_connectivity_map(connectivityMap);
 
-      const auto checkerDistance = connectivityMap[tile][originTile];
-      if (distance != checkerDistance) {
-        std::cout << originTile << " - " << tile << " distance " << distance << "\n";
-        std::cout << tile << " - " << originTile << " distance " << checkerDistance << "\n\n";
-        errorCount++;
-      }
-    }
-  }
-  std::cout << "Error count = " << errorCount << "\n";
+  const auto minPathCost = KeyFinder::minimize(maze);
+  std::cout << "Min path cost: " << minPathCost << "\n";
+
+  auto end = std::chrono::steady_clock::now();
+  std::cout << "Elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
 }
